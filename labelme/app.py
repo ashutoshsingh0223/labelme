@@ -6,6 +6,7 @@ import math
 import os
 import os.path as osp
 import re
+import json
 import webbrowser
 
 import imgviz
@@ -151,6 +152,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fileSearch = QtWidgets.QLineEdit()
         self.fileSearch.setPlaceholderText(self.tr("Search Filename"))
         self.fileSearch.textChanged.connect(self.fileSearchChanged)
+
+        self.fileFilter = QtWidgets.QLineEdit()
+        self.fileFilter.setPlaceholderText(self.tr("Filter by label/flag "))
+        self.fileFilter.returnPressed.connect(self.fileFilterChanged)
+
         self.fileListWidget = QtWidgets.QListWidget()
         self.fileListWidget.itemSelectionChanged.connect(
             self.fileSelectionChanged
@@ -160,6 +166,8 @@ class MainWindow(QtWidgets.QMainWindow):
         fileListLayout.setSpacing(0)
         fileListLayout.addWidget(self.fileSearch)
         fileListLayout.addWidget(self.fileListWidget)
+        fileListLayout.addWidget(self.fileFilter)
+
         self.file_dock = QtWidgets.QDockWidget(self.tr("File List"), self)
         self.file_dock.setObjectName("Files")
         fileListWidget = QtWidgets.QWidget()
@@ -1168,6 +1176,13 @@ class MainWindow(QtWidgets.QMainWindow):
             load=False,
         )
 
+    def fileFilterChanged(self):
+        self.importDirImages(
+            self.lastOpenDir,
+            pattern=self.fileFilter.text(),
+            load=False,
+        )
+
     def fileSelectionChanged(self):
         items = self.fileListWidget.selectedItems()
         if not items:
@@ -2107,6 +2122,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.openNextImg()
 
+    def _check_if_flag_matches(self, label_info, filter_value):
+        flags = label_info.get('flags')
+        if isinstance(flags, dict) and flags.get(filter_value):
+            return True
+        return False
+
     def importDirImages(self, dirpath, pattern=None, load=True):
         self.actions.openNextImg.setEnabled(True)
         self.actions.openPrevImg.setEnabled(True)
@@ -2118,9 +2139,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.filename = None
         self.fileListWidget.clear()
         for filename in self.scanAllImages(dirpath):
-            if pattern and pattern not in filename:
-                continue
             label_file = osp.splitext(filename)[0] + ".json"
+        
+            if pattern:
+                if pattern.startswith('filter_target') and os.path.exists(label_file):
+                    print(pattern)
+                    filter_key, filter_value = pattern.replace('filter_target', '').strip().split('=')
+                    print(filter_key, filter_value)
+                    l = json.loads(open(label_file, 'r').read())
+
+                    if filter_key == 'flags' and not self._check_if_flag_matches(label_info=l, filter_value=filter_value):
+                        continue
+                elif pattern not in filename:
+                    continue
+            
             if self.output_dir:
                 label_file_without_path = osp.basename(label_file)
                 label_file = osp.join(self.output_dir, label_file_without_path)
